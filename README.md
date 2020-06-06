@@ -1,5 +1,10 @@
-# prueba
+Servidor de prueba: http://stese.ml
 
+Requisitos del proyecto:
+Net Core 3.1
+SQL Server
+
+# Para clonar:
 git clone https://github.com/ssalazar217/prueba.git
 
 # Restaurar dependencias
