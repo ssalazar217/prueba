@@ -1,0 +1,185 @@
+﻿
+@{ ViewData["Title"] = "Mapas"; }
+
+@section header{
+    <link rel="stylesheet" type="text/css" href="https://ajax.googleapis.com/ajax/libs/dojo/1.10.4/dijit/themes/tundra/tundra.css">
+    <link rel="stylesheet" href="https://js.arcgis.com/4.15/esri/themes/light/main.css">
+    <link rel="stylesheet" href="https://cdn.datatables.net/1.10.21/css/jquery.dataTables.min.css">
+
+    <link rel="stylesheet" href="~/css/map.css">
+
+}
+
+<div id="viewDiv"></div>
+
+<div id="prueba"></div>
+
+@section Scripts{
+    <script src="https://cdn.datatables.net/1.10.21/js/jquery.dataTables.min.js"></script>
+    <script src="https://js.arcgis.com/4.15/"></script>
+    <script src="~/js/func.js"></script>
+    <script>
+        var tablaDpto = [];
+        var tablaVeredas = [];
+
+        var paginaVeredas = 0;
+
+        var jTablaVeredas;
+        var counter = 1;
+
+        $(document).ready(() => {
+
+        })
+
+        $('body').addClass('tundra');
+
+        ListUsuarios = async () => {
+            var data = {caso: "Lista Usuarios"}
+            var result = await $.post('@Url.Action("info", "Home")', data, async (r) => {
+                $("#FormListUsuarios #contenido").html(r);
+                formUsuarios.show();
+
+                $('#tabla_usuarios').DataTable({
+                    language: datatable_language,
+                    bLengthChange: false
+                });
+            });
+        }
+
+
+        ListVeredas = () => {
+            BloqueoAdd();
+            var tabla = $('<table>', { id: 'tabla_veredas', class: 'tColor' }).append(
+                $('<thead>').append(
+                    $('<tr>').append(
+                        $('<th>').html('Código'),
+                        $('<th>').html('Nombre vereda'),
+                        $('<th>').html('Municipio'),
+                        $('<th>').html('Departamento'),
+                        $('<th>').html('Shape.STArea()'),
+                        $('<th>').html('Shape.STLength()'),
+                        $('<th>').html('Acciones'),
+                    )
+                ),
+                $('<tbody>', { id: 'ListaVeredas' })
+            )
+
+            var div = $('<div>', { class: 'card' }).append(
+                $('<div>', { class: 'card_body' }).append(
+                    tabla,
+                    $('<div>', { class: 'text-center' }).append(
+                        $('<a>', { id:'btnA', class: 'btn btn-outline-dark fas fa-angle-left disabled', style: 'font-size:24px', onclick:'VeredasA()' }),
+                        $('<a>', { id:'btnS', class: 'btn btn-outline-dark fas fa-angle-right', style: 'font-size:24px', onClick:'VeredasS()' })
+                    )
+                )
+            );
+
+            LayerVeredas.queryFeatures({
+                where: '1=1',
+                returnGeometry: false,
+                start: paginaVeredas * PaginaLineas,
+                maxRecordCount: PaginaLineas,
+                outFields: ['OBJECTID', 'CODIGO_VER', 'DPTOMPIO', 'NOMBRE_VER', 'FUENTE', 'NOMB_MPIO', 'NOM_DEP', 'COD_DPTO', 'Shape.STArea()', 'Shape.STLength()'],
+            }).then((res) => {
+                $('#ListaVeredas').html('');
+                res.features.forEach(row => {
+                    $('#ListaVeredas').append(
+                        $('<tr>').append(
+                            $('<td>').html(row.attributes.OBJECTID),
+                            $('<td>').html(row.attributes.NOMBRE_VER),
+                            $('<td>').html(row.attributes.NOMB_MPIO),
+                            $('<td>').html(row.attributes.NOM_DEP),
+                            $('<td>').html(row.attributes["Shape.STArea()"]),
+                            $('<td>').html(row.attributes["Shape.STLength()"]),
+                            $('<td>').html("<a class='btn' data-toggle='tooltip' data-placement='top' title='Presiona click para realizar zoom en el mapa para la vereda seleccionada.' onclick='global.VerVereda(" +
+                                row.attributes.CODIGO_VER + ")'>🔍</a>")
+                        )
+                    )
+                });
+                formVeredas.show();
+                BloqueoRemove();
+            })
+            $('#FormListVeredas #contenido').html(div);
+        }
+
+        VeredasA = () => {
+            global.CargarVeredas(paginaVeredas - 1);
+        }
+        VeredasS = () => {
+            global.CargarVeredas(paginaVeredas + 1);
+        }
+
+        ListaVeredas = async () => {
+            BloqueoAdd();
+            var data = {caso: "Form Veredas"}
+            var result = await $.post('@Url.Action("info", "Home")', data, async (r) => {
+                $('#FormListVeredas #contenido').html(r);
+                jTablaVeredas = $('#tabla_veredas').DataTable({
+                    language: datatable_language,
+                    bLengthChange: false
+                });
+                formVeredas.show();
+
+                require(["esri/tasks/QueryTask", "esri/tasks/support/Query"], function (QueryTask, Query) {
+                    var queryDepartamentoTask = new QueryTask({
+                        url: "https://ags.esri.co/server/rest/services/DA_DANE/departamento_mgn2016/MapServer/0"
+                    })
+                    var dquery = new Query({
+                        where: "1=1",
+                        outFields: ["OBJECTID", "DPTO_CNMBRE"],
+                        returnGeometry: false
+                    });
+                    queryDepartamentoTask.execute(dquery).then(function (results) {
+                        results.features.forEach(row => {
+                            tablaDpto.push({
+                                "OBJECTID": row.attributes.OBJECTID,
+                                "DPTO_CNMBRE": row.attributes.DPTO_CNMBRE
+                            });
+                            $('#listDpto').append(
+                                $('<option>', { value: row.attributes.OBJECTID }).html(row.attributes.DPTO_CNMBRE)
+                            );
+                        });
+                        $('#listDpto').change(getVeredas);
+                        BloqueoRemove();
+                    });
+                });
+            });
+        }
+
+        getVeredas = function () {
+            if ($(this).find('option:selected').val() == -1) return;
+            var dpto = $(this).find('option:selected').text();
+            BloqueoAdd();
+            require(["esri/tasks/QueryTask", "esri/tasks/support/Query"], function (QueryTask, Query) {
+                var queryVeredasTask = new QueryTask({
+                    url: "https://ags.esri.co/server/rest/services/DA_DatosAbiertos/VeredasColombia/MapServer/0"
+                })
+                var vquery = new Query({
+                    where: "NOM_DEP = '" + dpto + "'",
+                    outFields: ["OBJECTID, NOMBRE_VER, NOMB_MPIO, NOM_DEP, Shape.STArea(), Shape.STLength(), CODIGO_VER"],
+                    returnGeometry: false
+                });
+                queryVeredasTask.execute(vquery).then(function (results) {
+                    tablaVeredas = [];
+                    jTablaVeredas.clear().draw();
+                    results.features.forEach(row => {
+                        jTablaVeredas.row.add([
+                            row.attributes.OBJECTID,
+                            row.attributes.NOMBRE_VER,
+                            row.attributes.NOMB_MPIO,
+                            row.attributes.NOM_DEP,
+                            row.attributes["Shape.STArea()"],
+                            row.attributes["Shape.STLength()"],
+                            "<a class='btn' data-toggle='tooltip' data-placement='top' title='Presiona click para realizar zoom en el mapa para la vereda seleccionada.' onclick='VeredaB(" + row.attributes.CODIGO_VER + ")'>🔍</a>"
+                        ]).draw(false);
+                    });
+                    BloqueoRemove();
+                });
+            });
+        }
+        VeredaB = (codigo) => {
+            global.VerVereda(codigo);
+        }
+    </script>
+    <script src="~/js/map.js"></script>
+}
